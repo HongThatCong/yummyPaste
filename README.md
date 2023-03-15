@@ -33,7 +33,7 @@ Original code:
 
 ### By HTC (TQN)
 
-![Dialog](.\img\dialog.png)
+![Dialog](./img/dialog.png)
 
 - Add dialog so users can preview, edit hex content in clipboar
 - By default, each character in the string is hex char, no more parsing in decimal
