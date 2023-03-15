@@ -1,4 +1,4 @@
-# a plugin to able to paste the string formatted binary data into the x64dbg.
+# a plugin to able to paste the string formatted binary/shellcode data into the x64dbg. 
 
 you can use
 
@@ -37,4 +37,4 @@ Original code:
 
 - Add dialog so users can preview, edit hex content in clipboar
 - By default, each character in the string is hex char, no more parsing in decimal
-- Hex string can copied from another hex editors, IDA...
+- Hex string can copy/paste from another hex editors, IDA, shellcode, or right in x64dbg (binary copy)...
