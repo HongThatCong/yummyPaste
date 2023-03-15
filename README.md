@@ -38,3 +38,11 @@ Original code:
 - Add dialog so users can preview, edit hex content in clipboar
 - By default, each character in the string is hex char, no more parsing in decimal
 - Hex string can copy/paste from another hex editors, IDA, shellcode, or right in x64dbg (binary copy)...
+
+### Build
+
+Build with Visual Studio >= 201x
+
+1. Edit file x64dbg.props, edit value of <X64DBG_DIR> and <X64SDK_DIR> to path of your install x64dbg and pluginsdk
+
+2. Open yummyPaste.sld and build
