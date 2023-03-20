@@ -17,5 +17,6 @@ BOOL ReAlloc(void **ptr, size_t oldSize, size_t newSize);
 void ResetBinaryObject();
 BOOL InitBinaryObject(size_t initial);
 void DestroyBinaryObject();
+bool ValidateHexText(LPCSTR pszText, size_t &nHexChars);
 BOOL ParseBytes(LPSTR data, size_t length);
 BINARY_DATA *GetBinaryData();

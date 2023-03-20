@@ -5,16 +5,22 @@
 enum
 {
     MENU_DISASM_PASTE,
-    MENU_DISASM_PASTE_PATCH,
+    MENU_DISASM_PATCH,
     MENU_DUMP_PASTE,
-    MENU_DUMP_PASTE_PATCH,
+    MENU_DUMP_PATCH,
     MENU_DISASM_ABOUT,
     MENU_DUMP_ABOUT
 };
 
-#define ABOUT_MSG "yummyPaste by Oguz Kartal\r\n\r\n" \
-                  "paste your shellcode string into the x64dbg!\r\n\r\nhttps://oguzkartal.net\r\n" \
-                  "compiled in: "  __DATE__ " " __TIME__
+constexpr LPCTSTR ABOUT_MSG = "yummyPaste by Oguz Kartal + HTC\n\n" \
+"Paste your shellcode hex string into the x64dbg!\n\nhttps://oguzkartal.net\n" \
+"https://github.com/HongThatCong/yummyPaste\n" \
+"compiled in: "  __DATE__ " " __TIME__;
+
+constexpr LPCTSTR H_EMPTY = "Hex string is empty";
+constexpr LPCTSTR H_INVALID = "Hex string is invalid";
+constexpr LPCTSTR H_NO_CHARS = "No hex characters entered";
+constexpr LPCTSTR OUT_OFF_MEMORY = "Out off memory";
 
 void About()
 {
@@ -104,7 +110,7 @@ BOOL CenterWindow(HWND hwndChild, HWND hwndCenter)
     RECT rcArea = { 0 };
     RECT rcCenter = { 0 };
 
-    if (!(dwStyle & WS_CHILD))
+    if (0 == (dwStyle & WS_CHILD))
     {
         // don't center against invisible or minimized windows
         if (hwndCenter != nullptr)
@@ -163,27 +169,82 @@ BOOL CenterWindow(HWND hwndChild, HWND hwndCenter)
     return SetWindowPos(hwndChild, nullptr, xLeft, yTop, -1, -1, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+void UpdateHexStatus(HWND hDlg)
+{
+    char szStatus[_MAX_PATH * 2] = { 0 };
+
+    HWND hEdit = GetDlgItem(hDlg, IDC_HEX_EDIT);
+    _ASSERT(nullptr != hEdit);
+    _ASSERT(IsWindow(hEdit));
+
+    int nLen = GetWindowTextLength(hEdit);
+    if (nLen > 0)
+    {
+        LPSTR pszText = (LPSTR) Malloc(static_cast<size_t>(nLen) + 1);
+        if (pszText)
+        {
+            GetWindowText(hEdit, pszText, nLen + 1);
+            size_t nHexChars = 0;
+            bool valid = ValidateHexText(pszText, nHexChars);
+            if (valid)
+            {
+                if (nHexChars)
+                {
+                    if (nHexChars % 2)
+                        sprintf_s(szStatus, "Hex string can be invalid. Hex chars = %zu, odd number", nHexChars);
+                    else
+                        sprintf_s(szStatus, "Hex string valid. Hex chars = %zu", nHexChars);
+                }
+                else
+                {
+                    strcpy_s(szStatus, H_EMPTY);
+                }
+            }
+            else
+            {
+                strcpy_s(szStatus, H_INVALID);
+            }
+            Free(pszText);
+        }
+        else
+        {
+            strcpy_s(szStatus, OUT_OFF_MEMORY);
+        }
+    }
+    else
+    {
+        strcpy_s(szStatus, H_EMPTY);
+    }
+
+    SetDlgItemText(hDlg, IDC_HEX_STATUS, szStatus);
+}
+
 // Message handler for hex edit box.
 INT_PTR CALLBACK HexEdit_DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     static HWND hHexEdit = nullptr;
     static LPSTR *ppszRet = nullptr;
-    size_t nLen = 0;
+    int nLen = 0;
+    size_t nHexChars = 0;
 
     switch (uMsg)
     {
         case WM_INITDIALOG:
         {
-            CenterWindow(hDlg, g_hWndDlg);
+            ppszRet = (LPSTR *) lParam;
+            _ASSERT(nullptr != ppszRet);
 
             hHexEdit = GetDlgItem(hDlg, IDC_HEX_EDIT);
-            ppszRet = (LPSTR *) lParam;
 
-            LPSTR pszClipText = GetClipboardTextData(&nLen);
+            LPSTR pszClipText = GetClipboardTextData(nullptr);
             if (pszClipText)
             {
                 SetWindowText(hHexEdit, pszClipText);
             }
+            Free(pszClipText);
+
+            CenterWindow(hDlg, g_hWndDlg);
+            UpdateHexStatus(hDlg);
 
             return (INT_PTR) TRUE;
         }
@@ -195,15 +256,52 @@ INT_PTR CALLBACK HexEdit_DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPa
                 nLen = GetWindowTextLength(hHexEdit);
                 if (nLen > 0)
                 {
-                    *ppszRet = (LPSTR) Malloc(nLen + 1);
-                    GetWindowText(hHexEdit, *ppszRet, nLen + 1);
+                    LPSTR pszText = (LPSTR) Malloc(static_cast<size_t>(nLen) + 1);
+                    if (pszText)
+                    {
+                        GetWindowText(hHexEdit, pszText, nLen + 1);
+                        bool valid = ValidateHexText(pszText, nHexChars);
+                        if (valid)
+                        {
+                            if (0 == nHexChars)
+                            {
+                                MessageBox(hDlg, H_NO_CHARS, PLUGIN_NAME, MB_ICONERROR);
+                            }
+                            else
+                            {
+                                // Ok, close dialog, return hex string to caller.
+                                *ppszRet = pszText;
+                                EndDialog(hDlg, IDOK);
+                                return (INT_PTR) TRUE;
+                            }
+                        }
+                        else
+                        {
+                            MessageBox(hDlg, H_INVALID, PLUGIN_NAME, MB_ICONERROR);
+                        }
+
+                        Free(pszText);
+                    }
+                    else
+                    {
+                        MessageBox(hDlg, OUT_OFF_MEMORY, PLUGIN_NAME, MB_ICONERROR);
+                    }
                 }
-                EndDialog(hDlg, IDOK);
+                else
+                {
+                    MessageBox(hDlg, H_EMPTY, PLUGIN_NAME, MB_ICONERROR);
+                }
+
                 return (INT_PTR) TRUE;
             }
             else if (LOWORD(wParam) == IDCANCEL)
             {
                 EndDialog(hDlg, IDCANCEL);
+                return (INT_PTR) TRUE;
+            }
+            else if ((HIWORD(wParam) == EN_UPDATE) && (LOWORD(wParam) == IDC_HEX_EDIT))
+            {
+                UpdateHexStatus(hDlg);
                 return (INT_PTR) TRUE;
             }
             break;
@@ -215,6 +313,7 @@ INT_PTR CALLBACK HexEdit_DlgProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lPa
 
 void MakeTomatoPaste(GUISELECTIONTYPE window, BOOL patched)
 {
+    bool bSuccess = false;
     size_t nLen = 0;
     LPSTR pPasteData = nullptr;
     SELECTIONDATA sel = { 0 };
@@ -231,17 +330,11 @@ void MakeTomatoPaste(GUISELECTIONTYPE window, BOOL patched)
     if (DialogBoxParam(g_hInstPlugin, MAKEINTRESOURCE(IDD_PASTE_DIALOG), g_hWndDlg, HexEdit_DlgProc, (LPARAM) &pPasteData) != IDOK)
         return;
 
-    if (!pPasteData || (0 == (nLen = strlen(pPasteData))))
-        return;
-
-    if (nLen % 2)
+    // check again
+    if ((nullptr == pPasteData) || (0 == (nLen = strlen(pPasteData))))
     {
-        if (IDOK != MessageBox(g_hWndDlg, "Hex string len is an odd number. Do you want to auto append 0 to beginning of odd hex string ?",
-            PLUGIN_NAME, MB_OKCANCEL))
-        {
-            Free(pPasteData);
-            return;
-        }
+        dputs("Nothing to paste/patch\n");
+        return;
     }
 
     ResetBinaryObject();
@@ -250,22 +343,32 @@ void MakeTomatoPaste(GUISELECTIONTYPE window, BOOL patched)
     binary = GetBinaryData();
     if (binary->invalid)
     {
-        MessageBoxA(g_hWndDlg, "Invalid hex string", PLUGIN_NAME, MB_ICONWARNING);
+        MessageBoxA(g_hWndDlg, H_INVALID, PLUGIN_NAME, MB_ICONWARNING);
         Free(pPasteData);
         return;
     }
 
     if (patched)
-        DbgFunctions()->MemPatch(sel.start, binary->binary, binary->index);
+        bSuccess = DbgFunctions()->MemPatch(sel.start, binary->binary, binary->index);
     else
-        DbgMemWrite(sel.start, binary->binary, binary->index);
+        bSuccess = DbgMemWrite(sel.start, binary->binary, binary->index);
 
     Free(pPasteData);
 
-    if (window == GUI_DISASSEMBLY)
-        GuiUpdateDisassemblyView();
-    else if (window == GUI_DUMP)
-        GuiUpdateDumpView();
+    if (bSuccess)
+    {
+        if (window == GUI_DISASSEMBLY)
+            GuiUpdateDisassemblyView();
+        else if (window == GUI_DUMP)
+            GuiUpdateDumpView();
+        sel.end = sel.start + binary->index;
+        GuiSelectionSet(window, &sel);
+        dprintf("Memory was %s at %p with %lu bytes.\n", patched ? "patched" : "written", sel.start, binary->index);
+    }
+    else
+    {
+        dprintf("Failed to paste/patch memory at %p with %lu bytes\n", sel.start, binary->index);
+    }
 }
 
 PLUG_EXPORT void CBMENUENTRY(CBTYPE /*cbType*/, PLUG_CB_MENUENTRY *info)
@@ -276,7 +379,7 @@ PLUG_EXPORT void CBMENUENTRY(CBTYPE /*cbType*/, PLUG_CB_MENUENTRY *info)
             MakeTomatoPaste(GUI_DISASSEMBLY, FALSE);
             break;
 
-        case MENU_DISASM_PASTE_PATCH:
+        case MENU_DISASM_PATCH:
             MakeTomatoPaste(GUI_DISASSEMBLY, TRUE);
             break;
 
@@ -284,7 +387,7 @@ PLUG_EXPORT void CBMENUENTRY(CBTYPE /*cbType*/, PLUG_CB_MENUENTRY *info)
             MakeTomatoPaste(GUI_DUMP, FALSE);
             break;
 
-        case MENU_DUMP_PASTE_PATCH:
+        case MENU_DUMP_PATCH:
             MakeTomatoPaste(GUI_DUMP, TRUE);
             break;
 
@@ -303,7 +406,7 @@ bool pluginInit(PLUG_INITSTRUCT */*initStruct*/)
 {
     if (!InitBinaryObject(0xFEED))
     {
-        MessageBoxA(g_hWndDlg, "Ups. memory?", PLUGIN_NAME, MB_ICONSTOP);
+        MessageBoxA(g_hWndDlg, OUT_OFF_MEMORY, PLUGIN_NAME, MB_ICONSTOP);
         return false;
     }
 
@@ -317,10 +420,14 @@ void pluginStop()
 
 void pluginSetup()
 {
-    _plugin_menuaddentry(g_hMenuDisasm, MENU_DISASM_PASTE, "&Paste it!");
-    _plugin_menuaddentry(g_hMenuDisasm, MENU_DISASM_PASTE_PATCH, "Paste and Patch");
-    _plugin_menuaddentry(g_hMenuDump, MENU_DUMP_PASTE, "&Paste it!");
-    _plugin_menuaddentry(g_hMenuDump, MENU_DUMP_PASTE_PATCH, "Paste and Patch");
-    _plugin_menuaddentry(g_hMenuDisasm, MENU_DISASM_ABOUT, "A&bout");
-    _plugin_menuaddentry(g_hMenuDump, MENU_DUMP_ABOUT, "A&bout");
+    constexpr LPCTSTR PASTE_MENU = "Paste (ignore selected size)";
+    constexpr LPCTSTR PATCH_MENU = "Patch (ignore selected size)";
+    constexpr LPCTSTR ABOUT_MENU = "About";
+
+    _plugin_menuaddentry(g_hMenuDisasm, MENU_DISASM_PASTE, PASTE_MENU);
+    _plugin_menuaddentry(g_hMenuDisasm, MENU_DISASM_PATCH, PATCH_MENU);
+    _plugin_menuaddentry(g_hMenuDump, MENU_DUMP_PASTE, PASTE_MENU);
+    _plugin_menuaddentry(g_hMenuDump, MENU_DUMP_PATCH, PATCH_MENU);
+    _plugin_menuaddentry(g_hMenuDisasm, MENU_DISASM_ABOUT, ABOUT_MENU);
+    _plugin_menuaddentry(g_hMenuDump, MENU_DUMP_ABOUT, ABOUT_MENU);
 }

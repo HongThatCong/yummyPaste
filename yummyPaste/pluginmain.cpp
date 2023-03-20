@@ -1,3 +1,5 @@
+#include <crtdbg.h>
+
 #include "pluginmain.h"
 #include "plugin.h"
 
@@ -36,9 +38,17 @@ PLUG_EXPORT void plugsetup(PLUG_SETUPSTRUCT *setupStruct)
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID)
 {
-    if (dwReason == DLL_PROCESS_ATTACH)
+    switch (dwReason)
     {
-        DisableThreadLibraryCalls(g_hInstPlugin = hinstDLL);
+        case DLL_PROCESS_ATTACH:
+            _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF | _CRTDBG_LEAK_CHECK_DF | _CRTDBG_CHECK_CRT_DF);
+            DisableThreadLibraryCalls(g_hInstPlugin = hinstDLL);
+            break;
+
+        case DLL_PROCESS_DETACH:
+            _CrtCheckMemory();
+            _CrtDumpMemoryLeaks();
+            break;
     }
 
     return TRUE;

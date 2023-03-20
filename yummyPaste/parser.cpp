@@ -5,8 +5,9 @@
 #include "parser.h"
 
 using SP_BYTE = std::shared_ptr<BYTE>;
+using BYTES_TUPLE = std::tuple<SP_BYTE, size_t>;
 
-BINARY_DATA gBinary = { 0 };
+BINARY_DATA gBinary = { nullptr, 0, 0, 0 };
 
 void *Malloc(size_t size)
 {
@@ -65,7 +66,7 @@ BOOL PutByteArray(BYTE *ba, size_t size)
     return TRUE;
 }
 
-BOOL PutBytes(const std::tuple < SP_BYTE, int> &data)
+BOOL PutBytes(const BYTES_TUPLE &data)
 {
     return PutByteArray(std::get<0>(data).get(), std::get<1>(data));
 }
@@ -131,19 +132,55 @@ BOOL IsHexChar(int c)
 
 #define MAX_HEX_BLOCK 2
 
-size_t GetNum(int hex)
+bool ValidateHexText(LPCSTR pszText, size_t &nHexChars)
 {
-    if (hex >= '0' && hex <= '9')
-        return hex - 0x30;
-    if (hex >= 'a' && hex <= 'f')
-        return hex - 0x57;
-    if (hex >= 'A' && hex <= 'F')
-        return hex - 0x37;
+    _ASSERT(nullptr != pszText);
 
-    return 0;
+    nHexChars = 0;
+
+    if (nullptr == pszText || 0 == *pszText)
+        return false;
+
+    LPCSTR pszStart = pszText;
+    LPCSTR pszEnd = pszText + strlen(pszText);
+
+    // skip/trim whitespace chars
+    while (isspace(*pszStart) && pszStart < pszEnd)
+        ++pszStart;
+    while (isspace(*pszEnd) && pszEnd > pszStart)
+        --pszEnd;
+
+    if (pszStart == pszEnd)
+        return true;    // empty string, caller check thought nHexChars
+
+    while (pszStart < pszEnd)
+    {
+        if ('0' == pszStart[0] || '\\' == pszStart[0])
+        {
+            if ((pszStart + 2 < pszEnd)
+                && ('x' == pszStart[1] || 'X' == pszStart[1])
+                && IsHexChar(pszStart[2]))
+            {
+                pszStart += 2;
+                continue;
+            }
+        }
+
+        if (IsHexChar(*pszStart))
+            ++nHexChars;
+        else if (!IsDelimiter(*pszStart))
+        {
+            nHexChars = 0;
+            return false;
+        }
+
+        ++pszStart;
+    }
+
+    return true;
 }
 
-std::tuple<SP_BYTE, int> Hex2Bytes(LPSTR sval, size_t len)
+BYTES_TUPLE Hex2Bytes(LPSTR sval, size_t len)
 {
     std::unique_ptr < BYTE[]> p = std::make_unique<BYTE[]>(len + 2);
     if (len % 2)
@@ -166,7 +203,7 @@ std::tuple<SP_BYTE, int> Hex2Bytes(LPSTR sval, size_t len)
     return { spb, finalLen };
 }
 
-std::tuple<SP_BYTE, int> GetBytesValue(LPSTR data, size_t length)
+BYTES_TUPLE GetBytesValue(LPSTR data, size_t length)
 {
     if (length > 2)
     {
@@ -175,7 +212,7 @@ std::tuple<SP_BYTE, int> GetBytesValue(LPSTR data, size_t length)
             if (strchr(data + 2, 'x') || strchr(data + 2, '-'))
             {
                 gBinary.invalid = TRUE;
-                return { 0,0 };
+                return { nullptr, 0 };
             }
 
             return Hex2Bytes(data + 2, length - 2);
@@ -185,7 +222,7 @@ std::tuple<SP_BYTE, int> GetBytesValue(LPSTR data, size_t length)
     if (strchr(data, 'x'))
     {
         gBinary.invalid = TRUE;
-        return { 0,0 };
+        return { nullptr, 0 };
     }
 
     if (*data == '-')
@@ -193,13 +230,13 @@ std::tuple<SP_BYTE, int> GetBytesValue(LPSTR data, size_t length)
         if (length == 1)
         {
             gBinary.invalid = TRUE;
-            return { 0,0 };
+            return { nullptr, 0 };
         }
 
         if (strchr(data + 1, '-'))
         {
             gBinary.invalid = TRUE;
-            return { 0,0 };
+            return { nullptr, 0 };
         }
     }
 
@@ -207,9 +244,9 @@ std::tuple<SP_BYTE, int> GetBytesValue(LPSTR data, size_t length)
 }
 
 #define PutValueAndResetBuffer() PutBytes(Hex2Bytes(buf, bufi)); \
-									written++; \
-									bufi = 0; \
-									RtlSecureZeroMemory(buf, sizeof(buf))
+                                    written++; \
+                                    bufi = 0; \
+                                    RtlSecureZeroMemory(buf, sizeof(buf))
 
 size_t TryExtractShellcodeStyle(LPSTR data, size_t length)
 {
@@ -271,12 +308,9 @@ size_t TryExtractShellcodeStyle(LPSTR data, size_t length)
         gBinary.invalid = TRUE;
         written = 0;
     }
-    else
+    else if (bufi > 0)
     {
-        if (bufi > 0)
-        {
-            PutValueAndResetBuffer();
-        }
+        PutValueAndResetBuffer();
     }
 
     return written;
@@ -288,8 +322,8 @@ BOOL ParseBytes(LPSTR data, size_t length)
     LPSTR p = data, sp = nullptr, supply = nullptr;
     BOOL quoteOn = FALSE, curly = FALSE;
 
-    // HTC: convert hex chars to lower case
-    std::for_each(data, data + length, [](char &c) { c = tolower(c); });
+    // HTC: convert hex string to lower case
+    CharLowerBuff(data, static_cast<DWORD>(length));
 
     supply = (LPSTR) Malloc(length + 1);
     if (!supply)
@@ -314,10 +348,9 @@ BOOL ParseBytes(LPSTR data, size_t length)
                 if (bufi > 0)
                     PutBytes(GetBytesValue(supply, bufi));
             }
-            else
+            else if (bufi > 0)
             {
-                if (bufi > 0)
-                    TryExtractShellcodeStyle(supply, bufi);
+                TryExtractShellcodeStyle(supply, bufi);
             }
 
             if (bufi > 0)
@@ -330,14 +363,12 @@ BOOL ParseBytes(LPSTR data, size_t length)
             p++;
             continue;
         }
-        else
+
+        if (*p == '{' || *p == '}')
         {
-            if (*p == '{' || *p == '}')
-            {
-                curly = *p == '{' ? TRUE : FALSE;
-                p++;
-                continue;
-            }
+            curly = *p == '{' ? TRUE : FALSE;
+            p++;
+            continue;
         }
 
         if (!quoteOn)
@@ -354,10 +385,6 @@ BOOL ParseBytes(LPSTR data, size_t length)
 
                 p++;
                 continue;
-            }
-            else
-            {
-                //maybe I can try to parse shellcode style without quotation.
             }
         }
 
@@ -382,10 +409,9 @@ BOOL ParseBytes(LPSTR data, size_t length)
 
     if (quoteOn)
         gBinary.invalid = TRUE;
-    else
+    else if (bufi > 0)
     {
-        if (bufi > 0)
-            PutBytes(GetBytesValue(supply, bufi));
+        PutBytes(GetBytesValue(supply, bufi));
     }
 
     Free(supply);

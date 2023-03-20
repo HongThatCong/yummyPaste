@@ -4,7 +4,7 @@
 
 // plugin data
 #define PLUGIN_NAME "yummyPaste"
-#define PLUGIN_VERSION 1
+#define PLUGIN_VERSION 11
 
 // functions
 bool pluginInit(PLUG_INITSTRUCT *initStruct);
