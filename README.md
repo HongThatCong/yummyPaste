@@ -41,8 +41,8 @@ Original code:
 
 ### Build
 
-Build with Visual Studio >= 201x
+Build with Visual Studio >= 2017
 
-1. Edit file x64dbg.props, edit value of <X64DBG_DIR> and <X64SDK_DIR> to path of your install x64dbg and pluginsdk
+1. Edit file x64dbg.props, change value of <X64DBG_DIR> and <X64SDK_DIR> to path of your install x64dbg and pluginsdk
 
 2. Open yummyPaste.sln and build
