@@ -1,5 +1,3 @@
-#include <crtdbg.h>
-
 #include "pluginmain.h"
 #include "plugin.h"
 

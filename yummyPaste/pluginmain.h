@@ -1,6 +1,9 @@
 #pragma once
 
+#define _CRTDBG_MAP_ALLOC
+
 #include <windows.h>
+#include <crtdbg.h>
 #include <bridgemain.h>
 #include <_plugins.h>
 
